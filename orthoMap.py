@@ -102,6 +102,7 @@ class stop_docker(object):
         else:
             print("no docker shells")
             resp.body="no docker shells"            
+        '''
         if os.path.exists(imagesPath): 
             global filePath
             image_path = os.path.join(filePath,imagesPath)
@@ -113,7 +114,7 @@ class stop_docker(object):
             os.chmod(outpath_texturing,stat.S_IRWXO)         
             shutil.rmtree(filePath) 
             print(123)
-
+        '''
 
 class get_orthmap(object):
     def on_get(self,req,resp):
