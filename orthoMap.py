@@ -45,18 +45,31 @@ class execute_command(object):
         cwd=None
         global dir
         dir =req.get_param('folder')
+        print(dir)
         #dir="111"
-        print(filePath)
         image_path = os.path.join(filePath, "images", dir)
         print(image_path)
         outpath_orthophoto=image_path+"/odm_orthophoto"
-        outpath_texturing=image_path+"/odm_texturing"  
+        print(outpath_orthophoto)
+        outpath_texturing=image_path+"/odm_texturing" 
+        if os.path.exists(outpath_orthophoto): 
+            cmd_String ="docker run --rm -v "+outpath_orthophoto+"/:/target/ removefile"
+            print(cmd_String)
+            return_code = subprocess.call(cmd_String, shell=True)  
+            cmd_String ="docker run --rm -v "+outpath_texturing+"/:/target/ removefile"
+            return_code = subprocess.call(cmd_String, shell=True)
+            print(return_code)         
         
-        cmd_String = "unbuffer docker run -i --rm -v "+ image_path+":/code/images -v "+ outpath_orthophoto+":/code/odm_orthophoto -v "+outpath_texturing+":/code/odm_texturing opendronemap/opendronemap"
+        print(image_path)
+        
+        
+        
+        cmd_String ="unbuffer docker run -i --rm -v "+ image_path+":/code/images -v "+ outpath_orthophoto+":/code/odm_orthophoto -v "+outpath_texturing+":/code/odm_texturing opendronemap/opendronemap"
+        print(cmd_String)
         if shell:
             cmdstring_list = cmd_String
         else:
-            cmdstring_list = shlex.split(cmd_String)
+            cmdstring_list = shlex.split(cmd_String.encode('utf-8'))
         if timeout:
             end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
         logPath=os.path.join(image_path,"log.txt")
@@ -102,19 +115,8 @@ class stop_docker(object):
         else:
             print("no docker shells")
             resp.body="no docker shells"            
-        '''
-        if os.path.exists(imagesPath): 
-            global filePath
-            image_path = os.path.join(filePath,imagesPath)
-            print(image_path)
-            outpath_orthophoto=image_path+"/odm_orthophoto"
-            outpath_texturing=image_path+"/odm_texturing" 
-            os.chown(outpath_orthophoto, 1000, 1000)
-            os.chmod(outpath_orthophoto,stat.S_IRWXO) 
-            os.chmod(outpath_texturing,stat.S_IRWXO)         
-            shutil.rmtree(filePath) 
-            print(123)
-        '''
+        global filePath
+        
 
 class get_orthmap(object):
     def on_get(self,req,resp):
@@ -142,13 +144,13 @@ def mkdir(path):
     # 判断结果
     if not isExists:
         # 如果不存在则创建目录
-        print path+' 创建成功'
+        print path+u' 创建成功'
         # 创建目录操作函数
         os.makedirs(path)
         return True
     else:
         # 如果目录存在则不创建，并提示目录已存在
-        print path+' 目录已存在'
+        print path+u' 目录已存在'
         return False
  
 class get_progress(object):
@@ -185,7 +187,7 @@ class transfor_map(object):
     def on_post(self, req, resp):
         """Handles GET requests"""
         #页面传过来文件夹名字和文件名字
-        folderName =req.get_param('folder')
+        folderName =unicode(req.get_param('folder'))
         fileName=req.get_param('name')
         print(folderName,fileName)
         # 定义要创建的目录
@@ -204,8 +206,16 @@ class transfor_map(object):
             #except Exception as e:
                 #raise falcon.HTTPError(falcon.HTTP_400, 'Error', e.message)
 
-        
-       
+class delete_image(object):
+    def on_get(self,req,resp):
+        folderName =req.get_param('folder')
+        path=os.path.join("images", folderName)
+        for root,dirs,files in os.walk(path):#（使用 os.walk ,这个方法返回的是一个三元tupple(dirpath(string), dirnames(list), filenames(list)), 其中第一个为起始路径， 第二个为起始路径下的文件夹, 第三个是起始路径下的文件.）
+            for name in files:
+                if '.JPG' in name:#判断某一字符串是否具有某一字串，可以使用in语句
+                    os.remove(os.path.join(root,name))##os.move语句为删除文件语句
+                    print('Delete files:',os.path.join(root,name))           
+        resp.body="all images deleted"
 
 class http_test(object):
     def on_get(self,req,resp):
@@ -246,6 +256,7 @@ class error400(object):
 
 api = falcon.API(middleware=[public_cors.middleware])
 #api.add_error_handler(Exception, server_error)
+api.add_route('/delteImage',delete_image())
 api.add_route('/transformap', transfor_map())
 api.add_route('/docker', execute_command())
 api.add_route('/stopdocker', stop_docker())
