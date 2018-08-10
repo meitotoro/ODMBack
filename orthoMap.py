@@ -24,107 +24,130 @@ import sys,stat
 
 public_cors = CORS(allow_all_origins=True)
 address=""
-stdout=None
+containers={}
 filePath="/home/odm/opendrone-qt/openDroneMap/backCode"
-dir=""
+dir={}
+logPath={}
+client = docker.from_env()
+before_time=datetime.datetime.now()
 
 
 class execute_command(object):
-    def on_get(self, req, resp):
-        """执行一个SHELL命令
-        封装了subprocess的Popen方法, 支持超时判断，支持读取stdout和stderr
-        参数:
-        cwd: 运行命令时更改路径，如果被设定，子进程会直接先更改当前路径到cwd
-        timeout: 超时时间，秒，支持小数，精度0.1秒
-        shell: 是否通过shell运行
-        Returns: return_code
-        Raises: Exception: 执行超时
-        """
-        shell=False
-        timeout=None
-        cwd=None
-        global dir
-        dir =req.get_param('folder')
-        print(dir)
-        #dir="111"
-        image_path = os.path.join(filePath, "images", dir)
-        print(image_path)
-        outpath_orthophoto=image_path+"/odm_orthophoto"
-        print(outpath_orthophoto)
-        outpath_texturing=image_path+"/odm_texturing" 
-        if os.path.exists(outpath_orthophoto): 
-            cmd_String ="docker run --rm -v "+outpath_orthophoto+"/:/target/ removefile"
-            print(cmd_String)
-            return_code = subprocess.call(cmd_String, shell=True)  
-            cmd_String ="docker run --rm -v "+outpath_texturing+"/:/target/ removefile"
-            return_code = subprocess.call(cmd_String, shell=True)
-            print(return_code)         
+    def on_get(self, req, resp):        
+        folder=req.get_param('folder')
+        runDocker(folder)
+        global filePath
+        image_path = os.path.join(filePath, "images", folder)
+        logPath[folder]=os.path.join(image_path,"log.txt")
         
-        print(image_path)
-        
-        
-        
-        cmd_String ="unbuffer docker run -i --rm -v "+ image_path+":/code/images -v "+ outpath_orthophoto+":/code/odm_orthophoto -v "+outpath_texturing+":/code/odm_texturing opendronemap/opendronemap"
-        print(cmd_String)
-        if shell:
-            cmdstring_list = cmd_String
-        else:
-            cmdstring_list = shlex.split(cmd_String.encode('utf-8'))
-        if timeout:
-            end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
-        logPath=os.path.join(image_path,"log.txt")
-        log_file=open(logPath,"w+")
-        #没有指定标准输出和错误输出的管道，因此会打印到屏幕上；
-        global stdout
-        sub = subprocess.Popen(cmdstring_list, cwd=cwd, stdin=subprocess.PIPE,shell=shell,stdout=subprocess.PIPE,stderr=log_file,bufsize=4096)
-        stdout=sub.stdout
         resp.body = "docker run"
+
+def runDocker(folder):
+    """执行一个SHELL命令
+    封装了subprocess的Popen方法, 支持超时判断，支持读取stdout和stderr
+    参数:
+    cwd: 运行命令时更改路径，如果被设定，子进程会直接先更改当前路径到cwd
+    timeout: 超时时间，秒，支持小数，精度0.1秒
+    shell: 是否通过shell运行
+    Returns: return_code
+    Raises: Exception: 执行超时
+    """
+    shell=False
+    timeout=None
+    cwd=None
+    global dir
+    dir[folder] =folder
+    print(dir[folder])
+    #dir="111"
+    image_path = os.path.join(filePath, "images", dir[folder])
+    print(image_path)
+    outpath_orthophoto=image_path+"/odm_orthophoto"
+    print(outpath_orthophoto)
+    outpath_texturing=image_path+"/odm_texturing" 
+    if os.path.exists(outpath_orthophoto): 
+        cmd_String ="docker run --rm -v "+outpath_orthophoto+"/:/target/ removefile"
+        print(cmd_String)
+        return_code = subprocess.call(cmd_String, shell=True)  
+        cmd_String ="docker run --rm -v "+outpath_texturing+"/:/target/ removefile"
+        return_code = subprocess.call(cmd_String, shell=True)
+        print(return_code)         
+    
+    print(image_path) 
+   # cmd_string ="unbuffer docker run -i --rm --name "+folder+" -v "+ image_path+":/code/images -v "+ outpath_orthophoto+":/code/odm_orthophoto -v "+outpath_texturing+":/code/odm_texturing opendronemap/opendronemap"
+    volumes_string={image_path:{"bind":"/code/images","mode":"rw"},outpath_orthophoto:{"bind":"/code/odm_orthophoto","mode":"rw"}, outpath_texturing:{"bind":"/code/odm_texturing","mode":"rw"}}
+  #  print(cmd_string)
+    global stdout
+    
+    containers[folder]=client.containers.run(image="opendronemap/opendronemap",name=folder,auto_remove=True,detach=True,volumes=volumes_string)
+    
+    #since_time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(time.time()))
+    #stdout[folder]=containers[folder].logs(since=2)
+
         
-       
+    #print(container.logs())
+    """  
+    if shell:
+        cmdstring_list = cmd_String
+    else:
+        cmdstring_list = lshlex.split(cmd_String.encode('utf-8'))
+    if timeout:
+        end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout) """
+    
+    #没有指定标准输出和错误输出的管道，因此会打印到屏幕上；
+    
+    #sub = subprocess.Popen(cmdstring_list, cwd=cwd, stdin=subprocess.PIPE,shell=shell,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=4096)
+    #stdout[folder]=sub.stdout
+
+
         
 
-        #subprocess.poll()方法：检查子进程是否结束了，如果结束了，设定并返回码，放在subprocess.returncode变量中 
-
-        '''
-        while sub.poll() is None:
-            if timeout:
-                if end_time <= datetime.datetime.now():
-                    raise Exception("Timeout：%s"%cmdstring)
-        '''
-        
-        #print(sub.returncode)
-
-        
-
-class stop_docker(object):
+class docker_command(object):
     def on_get(self,req,resp):
         folderName =req.get_param("folder")
+        command=req.get_param("command")
         imagesPath=os.path.join("images", folderName)
         print(imagesPath)
-        client = docker.from_env()
-        print(client.containers.list())
-        containers=client.containers.list()
-        if len(containers):
-            for container in client.containers.list():
-                id=container.short_id
-                print(id)
-                cmd_String = "docker stop "+id
-                return_code = subprocess.call(cmd_String, shell=True)  
-                print(return_code)                
-                resp.body="docker stopped"
-        else:
-            print("no docker shells")
-            resp.body="no docker shells"            
-        global filePath
-        
+        global client
+        try:
+            container=client.containers.get(folderName)
+            print(container)
+            if command=="stop":
+                print("stop docker")
+                try:
+                    container.stop()
+                    resp.body="docker stopped"
+                except docker.errors.APIError:
+                    print("docker"+folderName+"stop failed")
+                    resp.body=""
+            elif command=="pause":
+                print("pause docker")
+                try:
+                    container.pause()
+                    resp.body="docker paused"
+                except:
+                    print("docker"+folderName+"pause failed")
+                    resp.body=""
+            elif command=="restart":
+                print("docker restart")
+                try:
+                    container.restart()
+                    stdout[folder]=container.logs()
+                    resp.body="docker restart"
+                except:
+                    print("docker"+folderName+"restart failed")
+                    resp.body=""
+        except:
+            runDocker(folderName)
+
 
 class get_orthmap(object):
     def on_get(self,req,resp):
+        folder=req.get_param('folder')
         print(filePath)
-        print(dir)
-        image_path = os.path.join(filePath, "images", dir)
+        print(dir[folder])
+        image_path = os.path.join(filePath, "images", dir[folder])
         outpath_orthophoto=image_path+"/odm_orthophoto"
-        output_path=os.path.join(filePath,"zips",dir+".zip")
+        output_path=os.path.join(filePath,"zips",dir[folder]+".zip")
         resp.stream, resp.stream_len=zipData(outpath_orthophoto,output_path)
         #resp.data=str(sub.returncode)
 
@@ -155,31 +178,24 @@ def mkdir(path):
  
 class get_progress(object):
     def on_get(self,req,resp):
-        #每次取五行传回去   
-        global stdout 
-        # set the O_NONBLOCK flag of p.stdout file descriptor:
+        folderName =req.get_param("folder")
+        global before_time
+        now_time=datetime.datetime.now()
+        print(now_time)
+        seconds=(now_time-before_time).seconds
+        print(seconds)
+        stdout=containers[folderName].logs(since=seconds)
+        before_time=now_time
         print(stdout)
-       # if stdout is not None:
-        flags = fcntl(stdout, F_GETFL) # get current p.stdout flags
-        fcntl(stdout, F_SETFL, flags | O_NONBLOCK)
-        time.sleep(0.1)
-        try:
-            result=read(stdout.fileno(),1024)
-            if(result.find(u"OpenDroneMap app finished")==-1):
-                resp.body=result
-            else:
-                print(result)
-                resp.body="OpenDroneMap app finished"
-            print (resp.body)
-        except OSError:
-            print '[No more data]'
-            resp.body=""
-        """  
+        global logPath
+        log_file=open(logPath[folderName],"a")
+        log_file.write(stdout)    
+        if(stdout.find(u"OpenDroneMap app finished")==-1):
+            resp.body=stdout
         else:
-            resp.body = u'输入的图片量太少'
-            resp.status = falcon.HTTP_400
-            raise falcon.HTTPBadRequest(title=u"输入错误：", description=u"图片量太少，请重新输入") 
-        """
+            log_file.close()
+            resp.body="OpenDroneMap app finished"
+
 
 
 
@@ -259,7 +275,7 @@ api = falcon.API(middleware=[public_cors.middleware])
 api.add_route('/delteImage',delete_image())
 api.add_route('/transformap', transfor_map())
 api.add_route('/docker', execute_command())
-api.add_route('/stopdocker', stop_docker())
+api.add_route('/dockerCommand', docker_command())
 api.add_route('/progress',get_progress())
 api.add_route('/orthomap',get_orthmap())
 api.add_route('/httpTest',http_test())
